@@ -9,40 +9,41 @@
 --------------------------------------------------------------------------------
 -- Project: LOOP Class Library                                                --
 -- Release: 2.2 alpha                                                         --
--- Title  : Unordered Array Optimized for Containment Check                   --
+-- Title  : Stream that Serializes and Restores Values from Files             --
 -- Author : Renato Maia <maia@inf.puc-rio.br>                                 --
--- Date   : 29/10/2005 18:48                                                  --
---------------------------------------------------------------------------------
--- Notes:                                                                     --
---   Can only store non-numeric values.                                       --
---   Storage of strings equal to the name of one method prevents its usage.   --
+-- Date   : 12/09/2006 00:59                                                  --
 --------------------------------------------------------------------------------
 
-local rawget         = rawget
-local oo             = require "loop.simple"
-local UnorderedArray = require "loop.collection.UnorderedArray"
+local assert = assert
+local table = require "table"
+local oo = require "loop.simple"
+local Serializer = require "loop.serial.Serializer"
 
-module "loop.collection.UnorderedArraySet"
+module"loop.serial.FileStream"
 
-oo.class(_M, UnorderedArray)
+oo.class(_M, Serializer)
 
-valueat = rawget
-indexof = rawget
+buffersize = 1024
 
-function contains(self, value)
-	return self[value] ~= nil
+function write(self, ...)
+	self.file:write(...)
 end
 
-function add(self, value)
-	UnorderedArray.add(self, value)
-	self[value] = size(self)
+function put(self, ...)
+	self:serialize(...)
+	self.file:write("\0\n")
 end
 
-function remove(self, value)
-	removeat(self, self[value])
-end
-
-function removeat(self, index)
-	self[ self[index] ] = nil
-	return UnorderedArray.remove(self, index)
+function get(self)
+	local lines = {}
+	local line
+	repeat
+		line = self.remains or self.file:read(self.buffersize)
+		self.remains = nil
+		if line and line:find("\0") then
+			line, self.remains = line:match("^([^%z]*)%z(.*)$")
+		end
+		lines[#lines+1] = line
+	until not line or self.remains
+	return assert(self:load("return "..table.concat(lines, "\n")))()
 end

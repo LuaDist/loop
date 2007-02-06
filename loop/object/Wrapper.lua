@@ -9,40 +9,27 @@
 --------------------------------------------------------------------------------
 -- Project: LOOP Class Library                                                --
 -- Release: 2.2 alpha                                                         --
--- Title  : Unordered Array Optimized for Containment Check                   --
+-- Title  : Class of Dynamic Wrapper Objects for Method Invocation            --
 -- Author : Renato Maia <maia@inf.puc-rio.br>                                 --
--- Date   : 29/10/2005 18:48                                                  --
---------------------------------------------------------------------------------
--- Notes:                                                                     --
---   Can only store non-numeric values.                                       --
---   Storage of strings equal to the name of one method prevents its usage.   --
+-- Date   : 03/08/2005 16:35                                                  --
 --------------------------------------------------------------------------------
 
-local rawget         = rawget
-local oo             = require "loop.simple"
-local UnorderedArray = require "loop.collection.UnorderedArray"
+local type = type
+local oo   = require "loop.base"
 
-module "loop.collection.UnorderedArraySet"
+module("loop.object.Wrapper", oo.class)
 
-oo.class(_M, UnorderedArray)
+local value, object
 
-valueat = rawget
-indexof = rawget
-
-function contains(self, value)
-	return self[value] ~= nil
+local function method(self, ...)
+	return value(object, ...)
 end
 
-function add(self, value)
-	UnorderedArray.add(self, value)
-	self[value] = size(self)
-end
-
-function remove(self, value)
-	removeat(self, self[value])
-end
-
-function removeat(self, index)
-	self[ self[index] ] = nil
-	return UnorderedArray.remove(self, index)
+function __index(self, key)
+	object = self.__object
+	value = object[key]
+	if type(value) == "function"
+		then return method
+		else return value
+	end
 end

@@ -9,40 +9,39 @@
 --------------------------------------------------------------------------------
 -- Project: LOOP Class Library                                                --
 -- Release: 2.2 alpha                                                         --
--- Title  : Unordered Array Optimized for Containment Check                   --
+-- Title  : Stream that Serializes and Restores Values from Strings           --
 -- Author : Renato Maia <maia@inf.puc-rio.br>                                 --
--- Date   : 29/10/2005 18:48                                                  --
---------------------------------------------------------------------------------
--- Notes:                                                                     --
---   Can only store non-numeric values.                                       --
---   Storage of strings equal to the name of one method prevents its usage.   --
+-- Date   : 12/09/2006 00:59                                                  --
 --------------------------------------------------------------------------------
 
-local rawget         = rawget
-local oo             = require "loop.simple"
-local UnorderedArray = require "loop.collection.UnorderedArray"
+local assert = assert
+local table = require "table"
+local oo = require "loop.simple"
+local Serializer = require "loop.serial.Serializer"
 
-module "loop.collection.UnorderedArraySet"
+module"loop.serial.StringStream"
 
-oo.class(_M, UnorderedArray)
+oo.class(_M, Serializer)
 
-valueat = rawget
-indexof = rawget
+pos = 1
 
-function contains(self, value)
-	return self[value] ~= nil
+__tostring = table.concat
+
+function write(self, ...)
+	for i=1, select("#", ...) do
+		self[#self+1] = select(i, ...)
+	end
 end
 
-function add(self, value)
-	UnorderedArray.add(self, value)
-	self[value] = size(self)
+function put(self, ...)
+	if #self > 0 then self[#self+1] = "\0" end
+	self:serialize(...)
 end
 
-function remove(self, value)
-	removeat(self, self[value])
-end
-
-function removeat(self, index)
-	self[ self[index] ] = nil
-	return UnorderedArray.remove(self, index)
+function get(self)
+	local code = self.data or self:__tostring()
+	local newpos = code:find("%z", self.pos) or #code + 1
+	code = code:sub(self.pos, newpos - 1)
+	self.pos = newpos + 1
+	return assert(self:load("return "..code))()
 end

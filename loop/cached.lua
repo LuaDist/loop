@@ -1,110 +1,106 @@
--------------------------------------------------------------------------------
----------------------- ##       #####    #####   ######  ----------------------
----------------------- ##      ##   ##  ##   ##  ##   ## ----------------------
----------------------- ##      ##   ##  ##   ##  ######  ----------------------
----------------------- ##      ##   ##  ##   ##  ##      ----------------------
----------------------- ######   #####    #####   ##      ----------------------
-----------------------                                   ----------------------
------------------------ Lua Object-Oriented Programming -----------------------
--------------------------------------------------------------------------------
--- Title  : LOOP - Lua Object-Oriented Programming                           --
--- Name   : Cached Class Model                                               --
--- Author : Renato Maia <maia@inf.puc-rio.br>                                --
--- Version: 2.1 alpha                                                        --
--- Date   : 19/4/2005 11:24                                                  --
--------------------------------------------------------------------------------
--- Exported API:                                                             --
---   class(class, super)                                                     --
---   new(class, ...)                                                         --
---   classof(object)                                                         --
---   isclass(class)                                                          --
---   superclass(class)                                                       --
---   subclassof(class, super)                                                --
---   instanceof(object, class)                                               --
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+---------------------- ##       #####    #####   ######  -----------------------
+---------------------- ##      ##   ##  ##   ##  ##   ## -----------------------
+---------------------- ##      ##   ##  ##   ##  ######  -----------------------
+---------------------- ##      ##   ##  ##   ##  ##      -----------------------
+---------------------- ######   #####    #####   ##      -----------------------
+----------------------                                   -----------------------
+----------------------- Lua Object-Oriented Programming ------------------------
+--------------------------------------------------------------------------------
+-- Title  : LOOP - Lua Object-Oriented Programming                            --
+-- Name   : Cached Class Model                                                --
+-- Author : Renato Maia <maia@inf.puc-rio.br>                                 --
+-- Version: 2.2 alpha                                                         --
+-- Date   : 13/04/2006 18:53                                                  --
+--------------------------------------------------------------------------------
+-- Exported API:                                                              --
+--   class(class, ...)                                                        --
+--   new(class, ...)                                                          --
+--   classof(object)                                                          --
+--   isclass(class)                                                           --
+--   instanceof(object, class)                                                --
+--   members(class)                                                           --
+--   superclass(class)                                                        --
+--   subclassof(class, super)                                                 --
+--   supers(class)                                                            --
+--------------------------------------------------------------------------------
 
-local unpack  = unpack
-local pairs   = pairs
-local rawget  = rawget
-local rawset  = rawset
-local require = require
-local ipairs  = ipairs
+local type         = type
+local unpack       = unpack
+local pairs        = pairs
+local rawget       = rawget
+local rawset       = rawset
+local require      = require
+local ipairs       = ipairs
+local setmetatable = setmetatable
+local select       = select
 
-local table = require "table" require "loop.utils"
-
-local pack = pack
+local table = require "loop.table"
 
 module "loop.cached"
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 local ObjectCache = require "loop.collection.ObjectCache"
 local OrderedSet  = require "loop.collection.OrderedSet"
 local base        = require "loop.multiple"
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 table.copy(base, _M)
--------------------------------------------------------------------------------
-local function supersiterator(stack)
-	local next = stack:pop()
-	if next then
-		for _, def in ipairs(next.supers) do
-			stack:push(def)
+--------------------------------------------------------------------------------
+local function subsiterator(queue, class)
+	class = queue[class]
+	if class then
+		for sub in pairs(class.subs) do
+			queue:enqueue(sub)
 		end
+		return class
 	end
-	return next
 end
-function supers(...) return supersiterator, OrderedSet(arg) end
-
-local function subsiterator(queue)
-	local next = queue:dequeue()
-	if next then
-		for def in pairs(next.subs) do
-			queue:enqueue(def)
-		end
-	end
-	return next
+function subs(class)
+	queue = OrderedSet()
+	queue:enqueue(class)
+	return subsiterator, queue, OrderedSet.firstkey
 end
-function subs(...) return subsiterator, OrderedSet(arg) end
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 local function proxy_newindex(proxy, field, value)
-	local cached = base.classof(proxy)
-	return cached:updatefield(field, value)
+	return base.classof(proxy):updatefield(field, value)
 end
--------------------------------------------------------------------------------
-local ClassMap = base.new { __mode = "k" }
--------------------------------------------------------------------------------
-CachedClass = base.class()
-
+--------------------------------------------------------------------------------
 function getclass(class)
 	local cached = base.classof(class)
 	if base.instanceof(cached, CachedClass) then
 		return cached
 	end
 end
+--------------------------------------------------------------------------------
+local ClassMap = base.new { __mode = "k" }
+--------------------------------------------------------------------------------
+CachedClass = base.class()
 
 function CachedClass:__init(class)
 	local meta = {}
-	self = {
+	self = base.rawnew(self, {
 		__call = new,
 		__index = meta,
 		__newindex = proxy_newindex,
 		supers = {},
 		subs = {},
-		members = class and table.copy(class) or {},
+		members = table.copy(class, {}),
 		class = meta,
-	}
-	self.proxy = base.new(self, class and table.clear(class) or {})
+	})
+	self.proxy = setmetatable(class and table.clear(class) or {}, self)
 	ClassMap[self.class] = self.proxy
 	return self
 end
 
-function CachedClass:updatehierarchy(classes)
+function CachedClass:updatehierarchy(...)
 	-- separate cached from non-cached classes
-	local caches = { n=0 }
-	local supers = { n=0 }
-	for index, super in ipairs(classes) do
+	local caches = {}
+	local supers = {}
+	for i = 1, select("#", ...) do
+		local super = select(i, ...)
 		local cached = getclass(super)
 		if cached
-			then table.insert(caches, cached)
-			else table.insert(supers, super)
+			then caches[#caches + 1] = cached
+			else supers[#supers + 1] = super
 		end
 	end
 
@@ -140,20 +136,20 @@ function CachedClass:removesubclass(class)
 end
 
 function CachedClass:updatesuperclasses()
-	local uncached = { n = 0 }
+	local uncached = {}
 	-- copy uncached superclasses defined in the class
-	for idx, super in ipairs(self.uncached) do
+	for _, super in ipairs(self.uncached) do
 		if not uncached[super] then
 			uncached[super] = true
-			table.insert(uncached, super)
+			uncached[#uncached + 1] = super
 		end
 	end
 	-- copy inherited uncached superclasses
 	for _, cached in ipairs(self.supers) do
-		for idx, super in ipairs{base.superclass(cached.class)} do
+		for _, super in base.supers(cached.class) do
 			if not uncached[super] then
 				uncached[super] = true
-				table.insert(uncached, super)
+				uncached[#uncached + 1] = super
 			end
 		end
 	end
@@ -162,7 +158,7 @@ end
 
 function CachedClass:updatemembers()
 	local class = table.clear(self.class)
-	for i = table.getn(self.supers), 1, -1 do
+	for i = #self.supers, 1, -1 do
 		local super = self.supers[i].class
 		-- copy inherited members
 		table.copy(super, class)
@@ -215,64 +211,94 @@ function CachedClass:updatefield(name, member)
 	end
 	return old
 end
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 function class(class, ...)
 	class = getclass(class) or CachedClass(class)
-	class:updatehierarchy(arg)
+	class:updatehierarchy(...)
 	class:updateinheritance()
 	return class.proxy
 end
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 function rawnew(class, object)
 	local cached = getclass(class)
 	if cached then class = cached.class end
 	return base.rawnew(class, object)
 end
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 function new(class, ...)
-	local cached = getclass(class)
-	if cached then class = cached.class end
-	return class(unpack(arg, 1, arg.n))
+	if type(class.__init) == "function"
+		then return class:__init(...)
+		else return rawnew(class, ...)
+	end
 end
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 function classof(object)
 	local class = base.classof(object)
 	return ClassMap[class] or class
 end
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 function isclass(class)
 	return getclass(class) ~= nil
 end
--------------------------------------------------------------------------------
-local function append(tab, ...)
-	for _, value in ipairs(arg) do table.insert(tab, value) end
-end
+--------------------------------------------------------------------------------
 function superclass(class)
-	local supers = { n=0 }
+	local supers = {}
 	local cached = getclass(class)
 	if cached then
-		for _, cachedsuper in ipairs(cached.supers) do
-			table.insert(supers, cachedsuper.proxy)
+		for index, super in ipairs(cached.supers) do
+			supers[index] = super.proxy
 		end
 		class = cached.class
 	end
-	append(supers, base.superclass(class))
+	for _, super in base.supers(class) do
+		supers[#supers + 1] = super
+	end
 	return unpack(supers)
 end
--------------------------------------------------------------------------------
-function subclassof(class, super)
-	if class == super then
-		return true
-	else
-		local supers = pack(superclass(class))
-		for _, superclass in ipairs(supers) do
-			if subclassof(superclass, super) then
-				return true
-			end
-		end
+--------------------------------------------------------------------------------
+local function icached(cached, index)
+	local super
+	local supers = cached.supers
+	index = index + 1
+	-- check if index points to a cached superclass
+	super = supers[index]
+	if super then return index, super.proxy end
+	-- check if index points to an uncached superclass
+	super = cached.uncached[index - #supers]
+	if super then return index, super end
+end
+function supers(class)
+	local cached = getclass(class)
+	if cached
+		then return icached, cached, 0
+		else return base.supers(class)
 	end
 end
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+function subclassof(class, super)
+	if class == super then return true end
+	for _, superclass in supers(class) do
+		if subclassof(superclass, super) then return true end
+	end
+	return false
+end
+--------------------------------------------------------------------------------
 function instanceof(object, class)
 	return subclassof(classof(object), class)
+end
+--------------------------------------------------------------------------------
+function members(class)
+	local cached = getclass(class)
+	if cached
+		then return pairs(cached.members)
+		else return base.members(class)
+	end
+end
+--------------------------------------------------------------------------------
+function allmembers(class)
+	local cached = getclass(class)
+	if cached
+		then return pairs(cached.class)
+		else return base.members(class)
+	end
 end
