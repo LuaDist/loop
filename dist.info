@@ -1,0 +1,14 @@
+--- This file is part of LuaDist project
+
+name = "loop"
+version = "2.3beta"
+
+desc = "LOOP stands for Lua Object-Oriented Programming and is a set of packages for supporting different models of object-oriented programming in the Lua language"
+author = "Renato Maia"
+license = "MIT/X11"
+url = "http://loop.luaforge.net/"
+maintainer = "Peter Drahoš"
+
+depends = {
+	"lua ~> 5.1",
+}
